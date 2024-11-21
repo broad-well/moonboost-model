@@ -135,6 +135,15 @@ class MusicTokenizer():
         labels = [self.convert_to_language_tokens(x) for x in output]
         return labels
 
+    def encode_series_player_classification(self, raw_token_series, if_add_sos, if_add_eos, if_add_classification_token):
+        out = [self.encode_single(x) for x in raw_token_series]
+        if if_add_sos:
+            out = [self.sos_token_compound] + out
+        if if_add_eos:
+            out = out + [self.eos_token_compound]
+        if if_add_classification_token:
+            out = out + [self.classification_token]
+        return out
     def convert_to_language_tokens(self, x):
         """
         x looks like [time_shift, 1024, 11, 12, 129, 128]
@@ -170,6 +179,10 @@ class MusicTokenizer():
         out = torch.tensor(out)
         out = out.view(*original_shape[:-1], -1)
         return out
+
+
+    def add_new_tokens(self, token_name = "classification_token", token_val = -4):
+        setattr(self, token_name, [token_val for _ in range(6)]) #example token
 
     def create_dur_dictionary(self):
         """Create a duration dictionary to map duration values to tokens in log scale."""
