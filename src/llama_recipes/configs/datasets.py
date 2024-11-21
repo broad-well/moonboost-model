@@ -48,3 +48,12 @@ class merge_dataset:
     test_split: str = "test"
     data_dir: str = "/data/scratch/acw753/processed_midi"
     csv_file: str = "/data/scratch/acw753/processed_midi/train_test_split.csv"
+
+@dataclass
+class player_classification_dataset:
+    dataset: str = "player_classification_dataset"
+    train_split: str = "train"
+    test_split: str = "test"
+    data_dir: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split"
+    csv_file: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split/train_test_split.csv"
+    max_dur: int = 15
