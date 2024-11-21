@@ -160,6 +160,36 @@ class ConcatDataset_vanilla(Dataset):
                 buffer = {k: v[self.chunk_size:] for k,v in buffer.items()}
             sample_count += 1  # Increment the sample counter
 
+        # Handle the remaining buffer after all samples are processed
+        while len(next(iter(buffer.values()))) > 0:
+            # Determine the remaining space in the buffer
+            required_size = self.chunk_size - len(next(iter(buffer.values())))
+
+            # We need to fill the remaining space in the buffer
+            while required_size > 0:
+                for sample in self.dataset:
+                    if len(sample['input_ids']) <= required_size:
+                        # Add the whole sample to the buffer if it's small enough
+                        buffer = {k: v + sample[k] for k, v in buffer.items()}
+                        required_size -= len(sample['input_ids'])  # Reduce the required size
+                    else:
+                        # If the sample is larger than required size, take a slice
+                        buffer = {k: v + sample[k][:required_size] for k, v in buffer.items()}
+                        sample = {k: sample[k][required_size:] for k in sample}  # Update the sample
+
+                        # Once the buffer is filled, break the loop
+                        self.samples.append({k: v[:self.chunk_size] for k, v in buffer.items()})
+                        buffer = {k: [] for k in buffer.keys()}  # Clear the buffer
+                        required_size = 0  # Buffer is filled, no more data is needed
+                        break
+
+                # If there's still data left to fill, continue processing until buffer is full
+                if required_size > 0:
+                    continue
+
+            sample_count += 1  # Increment sample counter
+
+
     def __getitem__(self, idx):
         return self.samples[idx]
 
