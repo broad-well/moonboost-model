@@ -153,7 +153,7 @@ class ConcatDataset_vanilla(Dataset):
 
         sample_count = 0  # Initialize a counter for the samples
         for sample in tqdm(self.dataset, desc="Preprocessing dataset", dynamic_ncols=True):
-            sample['attention_mask'] = [sample_count]*len(sample['attention_mask']) #In the model, each sample will only attend to itself according to the "sample_count" value
+            sample['attention_mask'] = [sample_count] * len(sample['input_ids'])  # In the model, each sample will only attend to itself according to the "sample_count" value
             buffer = {k: v + sample[k] for k, v in buffer.items()}            
             while len(next(iter(buffer.values()))) > self.chunk_size:
                 self.samples.append({k: v[:self.chunk_size] for k,v in buffer.items()})
@@ -168,6 +168,7 @@ class ConcatDataset_vanilla(Dataset):
             # We need to fill the remaining space in the buffer
             while required_size > 0:
                 for sample in self.dataset:
+                    sample['attention_mask'] = [sample_count] * len(sample['input_ids'])  # In the model, each sample will only attend to itself according to the "sample_count" value
                     if len(sample['input_ids']) <= required_size:
                         # Add the whole sample to the buffer if it's small enough
                         buffer = {k: v + sample[k] for k, v in buffer.items()}

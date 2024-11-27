@@ -56,4 +56,4 @@ class player_classification_dataset:
     test_split: str = "test"
     data_dir: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split"
     csv_file: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split/train_test_split.csv"
-    max_dur: int = 15
+    seq_len: int = 600
