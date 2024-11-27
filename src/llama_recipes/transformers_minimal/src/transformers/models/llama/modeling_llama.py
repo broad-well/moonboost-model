@@ -925,10 +925,12 @@ class LlamaSdpaAttention(LlamaAttention):
         
         where_sos = (position_ids[..., 0] == self.config.sos_token).unsqueeze(-1) #only check the onset dimension  
         where_eos = (position_ids[..., 0] == self.config.eos_token).unsqueeze(-1) 
-        
+        #TODO: add classification token
+        where_classification = (position_ids[:, :, 0] == self.config.classification_token).unsqueeze(-1)
         #Since SOS and EOS are negative number, temporarily change it to 0 to avoid indexing error
         position_ids_sos = torch.where(where_sos, torch.tensor([0 for _ in range(6)]).to(hidden_states.device), position_ids)
         position_ids_eos = torch.where(where_eos, torch.tensor([2**15 for _ in range(6)]).to(hidden_states.device), position_ids_sos)
+        position_ids_eos = torch.where(where_classification, torch.tensor([2**15 + 1 for _ in range(6)]).to(hidden_states.device), position_ids_eos)
         position_ids = position_ids_eos
 
         cos_onset, sin_onset = self.rotary_emb_onset(value_states, position_ids[:, :, 0]) #position_ids: batch, len, 6; last dim: (onset, duration, octave, pitch_class, instrument, velocity)
@@ -1341,7 +1343,7 @@ class LlamaModel(LlamaPreTrainedModel):
         super().__init__(config)
         self.sos_token = config.sos_token
         self.eos_token = config.eos_token
-
+        self.config = config
         # self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx) #Llama's implementation of word embedding
 
         #First distribute embedding dimensions based on total hidden_size and number of heads
@@ -1379,14 +1381,20 @@ class LlamaModel(LlamaPreTrainedModel):
         #SOS, EOS tokens are embedded seperately
         sos = self.supplementary_embedding(torch.tensor(0).to(input_ids.device))[None, None, ...].expand(input_ids.size(0), -1, -1) #dim*6 --> 1, 1, dim*6 --> batch, 1, dim*6
         eos = self.supplementary_embedding(torch.tensor(1).to(input_ids.device))[None, None, ...].expand(input_ids.size(0), -1, -1)
+        if hasattr(self, 'classification_token_embedding'):
+            classification_embedding = self.classification_token_embedding(torch.tensor(0).to(input_ids.device))[None, None, ...].expand(input_ids.size(0), -1, -1) #dim*6 --> 1, 1, dim*6 --> batch, 1, dim*6
 
         #Detect SOS and EOS:
         where_sos = (input_ids[:, :, 0] == self.sos_token).unsqueeze(-1)
         where_eos = (input_ids[:, :, 0] == self.eos_token).unsqueeze(-1)
+        if hasattr(self, 'classification_token_embedding'):
+            self.classification_token = self.config.classification_token
+            where_classification = (input_ids[:, :, 0] == self.classification_token).unsqueeze(-1)
 
         #Since SOS and EOS are negative number, temporarily change it to 0 to avoid indexing error
         input_ids_tmp = torch.where((where_sos|where_eos), torch.tensor([0 for _ in range(6)]).to(input_ids), input_ids)
-
+        if hasattr(self, 'classification_token_embedding'):
+            input_ids_tmp = torch.where(where_classification, torch.tensor([0 for _ in range(6)]).to(input_ids), input_ids_tmp)
         onsets = self.onset_embedding(input_ids_tmp[..., 0])
         durs = self.dur_embedding(input_ids_tmp[..., 1])
         octaves = self.octave_embedding(input_ids_tmp[..., 2]) 
@@ -1399,6 +1407,9 @@ class LlamaModel(LlamaPreTrainedModel):
         out_fme_sos = torch.where(where_sos, sos, out_fme) #batch, len, 1; batch, 1, dim; batch, len, dim
         
         out_fme_sos_eos = torch.where(where_eos, eos, out_fme_sos)
+
+        if hasattr(self, 'classification_token_embedding'):
+            out_fme_sos_eos = torch.where(where_classification, classification_embedding, out_fme_sos_eos)
 
         #Additional non-linearity to the embeddings
 
@@ -1983,10 +1994,12 @@ DECODING_METHODS = {
 class LlamaForSequenceClassification(LlamaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+        self.classification_token = config.classification_token
         self.num_labels = config.num_labels
         self.model = LlamaModel(config)
         self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
-
+        self.model.classification_token_embedding = torch.nn.Embedding(1, config.hidden_size)
+        self.model.classification_token_embedding.requires_grad = True
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -2017,44 +2030,36 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
+        #outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        position_ids = input_ids
         transformer_outputs = self.model(
-            input_ids,
+            input_ids=input_ids,
             attention_mask=attention_mask,
-            position_ids=position_ids,
+            position_ids=position_ids, #if sdpa: position_ids carry information about onset, dur, pitch, instr, vel; elif sdpa_baseline: position_ids are None
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=None,
         )
+
         hidden_states = transformer_outputs[0]
         logits = self.score(hidden_states)
 
-        if input_ids is not None:
-            batch_size = input_ids.shape[0]
-        else:
-            batch_size = inputs_embeds.shape[0]
 
-        if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
-        else:
-            if input_ids is not None:
-                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                sequence_lengths = sequence_lengths.to(logits.device)
-            else:
-                sequence_lengths = -1
+        where_eos = (input_ids[..., 0] == self.classification_token)  # Shape: (batch_size, seq_len)
+        # Use `where_eos` to extract logits
+        batch_indices, seq_indices = where_eos.nonzero(as_tuple=True)  # Get batch and sequence indices # get position-1 before the EOS token
 
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
-
+        # Gather logits
+        pooled_logits = logits[batch_indices, seq_indices]  # Shape: (num_eos_positions, hidden_dim) , because it might learn just to turn off the sequence
+        
         loss = None
         if labels is not None:
-            labels = labels.to(logits.device)
+            labels = labels[batch_indices, seq_indices].to(logits.device)
+
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
@@ -2071,7 +2076,12 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
                     loss = loss_fct(pooled_logits, labels)
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
+                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1)) #TODO: add weighting param since there might be an arbitrary number of labels here
+                number_of_labels = where_eos.sum()
+                if number_of_labels ==0:
+                    loss = torch.tensor(0., requires_grad=True).to(pooled_logits)
+                else:
+                    loss = loss/number_of_labels
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(pooled_logits, labels)

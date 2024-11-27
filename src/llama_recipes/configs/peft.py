@@ -8,9 +8,10 @@ from typing import List
 class lora_config:
      r: int=8
      lora_alpha: int=32
-     target_modules: List[str] = field(default_factory=lambda: ["q_proj", "v_proj"])
+     target_modules: List[str] = field(default_factory=lambda: ["q_proj", "v_proj", "k_proj", "o_proj"])
      bias= "none"
      task_type: str= "CAUSAL_LM"
+     modules_to_save: List[str] = field(default_factory=lambda: ["score", "classification_token_embedding"])
      lora_dropout: float=0.05
      inference_mode: bool = False
 
