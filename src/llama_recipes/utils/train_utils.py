@@ -760,9 +760,9 @@ def train_player_classification(model, train_dataloader,eval_dataloader, dataset
                     #TODO: More frequent evaluation; Remember to switch on model.train again
                     if step%train_config.validation_interval==0 and train_config.run_validation:
                         
-                        # eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run)
+                        eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run) #if not evaluate on entire sequences, then use eval loader to increase efficiency 
                         """Evaluate Accuracy"""
-                        eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification_accuracy(model, train_config, dataset_val, local_rank, tokenizer, wandb_run)
+                        # eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification_accuracy(model, train_config, dataset_val, local_rank, tokenizer, wandb_run)
 
                         
                         if train_config.save_metrics:
@@ -1013,6 +1013,7 @@ def eval_player_classification(model,train_config, eval_dataloader, local_rank, 
     val_step_perplexity = []
     eval_loss = 0.0  # Initialize evaluation loss
     total_eval_steps = 0
+    total_num_labels, total_num_correct = 0, 0
     with MemoryTrace() as memtrace:
         for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="evaluating Epoch", dynamic_ncols=True)):
             total_eval_steps += 1
@@ -1033,7 +1034,23 @@ def eval_player_classification(model,train_config, eval_dataloader, local_rank, 
             with torch.no_grad():
                 # Forward pass and compute loss
                 outputs = model(**batch)
-                loss = outputs.loss
+                loss, pooled_logits = outputs.loss, outputs.logits #logits should have shape 1, num_classes
+
+                """ gather label and prediction"""
+
+                where_classification = (batch['input_ids'][..., 0] == model.module.classification_token)  # Shape: (batch_size, seq_len)
+                num_labels = where_classification.sum()
+                batch_indices, seq_indices = where_classification.nonzero(as_tuple=True)  
+                
+                labels = batch['labels'][batch_indices, seq_indices].to(pooled_logits.device) # Shape: (batch_with_labels, seq_len_with_labels)
+                # pooled_logits = logits[batch_indices, seq_indices] # Shape: (batch_with_labels, seq_len_with_labels, dim)
+
+                predictions = torch.argmax(pooled_logits, dim=-1)  
+                num_correct = (predictions == labels).sum()
+
+                total_num_labels += num_labels
+                total_num_correct += num_correct
+                print(f"num_labels: {num_labels}, num_correct: {num_correct}")
                 if train_config.save_metrics:
                     val_step_loss.append(loss.detach().float().item())
                     val_step_perplexity.append(float(torch.exp(loss.detach().float())))
@@ -1048,6 +1065,8 @@ def eval_player_classification(model,train_config, eval_dataloader, local_rank, 
 
     # Compute average loss and perplexity
     eval_epoch_loss = eval_loss / len(eval_dataloader)
+    accuracy = total_num_correct/total_num_labels
+    print(f"Accuracy: {accuracy}")
     if train_config.enable_fsdp:
         eval_epoch_loss = eval_epoch_loss/world_size
     eval_ppl = torch.exp(eval_epoch_loss)
@@ -1063,6 +1082,7 @@ def eval_player_classification(model,train_config, eval_dataloader, local_rank, 
         wandb_run.log({
                         'eval/perplexity': eval_ppl,
                         'eval/loss': eval_epoch_loss,
+                        'eval/accuracy': accuracy
                     }, commit=False)
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
