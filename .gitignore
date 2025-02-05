@@ -1,4 +1,5 @@
 src/llama_recipes/datasets/__pycache__/
+src/llama_recipes/data/__pycache__/
 src/llama_recipes/model/modeling_musicllama.py
 src/llama_recipes/transformers_minimal/build/*
 src/llama_recipes/transformers_minimal/src/transformers.egg-info/SOURCES.txt
