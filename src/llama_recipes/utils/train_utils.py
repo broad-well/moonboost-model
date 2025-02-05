@@ -625,7 +625,7 @@ def train_overfit(model, batch, train_dataloader,eval_dataloader, tokenizer, opt
 
     return results
 
-def train_player_classification(model, train_dataloader,eval_dataloader, dataset_val, tokenizer, optimizer, lr_scheduler, starting_epoch, starting_step,gradient_accumulation_steps, train_config, fsdp_config=None, ddp_config=None, local_rank=None, rank=None, wandb_run=None):
+def train_player_classification(model, train_dataloader,eval_dataloader, dataset_val, tokenizer, optimizer, lr_scheduler, starting_epoch, starting_step,gradient_accumulation_steps, train_config, fsdp_config=None, ddp_config=None, local_rank=None, rank=None, wandb_run=None, individual_eval = False):
     """
     Trains the model on the given dataloader
 
@@ -760,7 +760,11 @@ def train_player_classification(model, train_dataloader,eval_dataloader, dataset
                     #TODO: More frequent evaluation; Remember to switch on model.train again
                     if step%train_config.validation_interval==0 and train_config.run_validation:
                         
-                        eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run) #if not evaluate on entire sequences, then use eval loader to increase efficiency 
+                        """Evaluate Accuracy"""
+                        if individual_eval:
+                            eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification_accuracy(model, train_config, dataset_val, local_rank, tokenizer, wandb_run)
+                        else:
+                            eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification(model, train_config, eval_dataloader, local_rank, tokenizer, wandb_run) #if not evaluate on entire sequences, then use eval loader to increase efficiency 
                         """Evaluate Accuracy"""
                         # eval_ppl, eval_epoch_loss, temp_val_loss, temp_step_perplexity = eval_player_classification_accuracy(model, train_config, dataset_val, local_rank, tokenizer, wandb_run)
 
@@ -925,6 +929,8 @@ def eval_player_classification_accuracy(model,train_config, dataset_val, local_r
     total_eval_steps = 0
     correct = 0
     total = len(dataset_val)
+    all_predictions = []
+    all_labels = []
     from torch.utils.data import DataLoader
     eval_dataloader = DataLoader(dataset_val, batch_size=1, shuffle=False)
 
@@ -954,6 +960,9 @@ def eval_player_classification_accuracy(model,train_config, dataset_val, local_r
                 labels = batch['labels'][0, 0]
                 predictions = torch.argmax(logits[0], dim=-1)  # Shape: (batch_size , seq_len)
                 correct_predictions = (predictions == labels)# Shape: (batch_size * seq_len)
+
+                all_predictions.append(predictions.cpu().numpy())
+                all_labels.append(labels.cpu().numpy())
                 if correct_predictions:
                     correct+=1
                 if train_config.save_metrics:
@@ -975,7 +984,11 @@ def eval_player_classification_accuracy(model,train_config, dataset_val, local_r
     eval_ppl = torch.exp(eval_epoch_loss)
 
     accuracy = correct/total
-    print(f"Accuracy: {accuracy}")
+    print(f"total: {total}, len:{len(dataset_val)}")
+    from sklearn.metrics import f1_score
+    f1 = f1_score(all_labels, all_predictions, average='macro')
+    print(f"Accuracy: {accuracy} f1:{f1}")
+    print(f"all_labels:{all_labels}, all_predictions:{all_predictions}")
     # Print evaluation metrics
     if train_config.enable_fsdp:
         if local_rank==0:
@@ -987,7 +1000,8 @@ def eval_player_classification_accuracy(model,train_config, dataset_val, local_r
         wandb_run.log({
                         'eval/perplexity': eval_ppl,
                         'eval/loss': eval_epoch_loss,
-                        'eval/accuracy': accuracy
+                        'eval/accuracy': accuracy,
+                        'eval/f1': f1
                     }, commit=False)
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
