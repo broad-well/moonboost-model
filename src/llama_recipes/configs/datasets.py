@@ -2,7 +2,7 @@
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
 
 from dataclasses import dataclass
-
+from typing import Optional
     
 @dataclass
 class samsum_dataset:
@@ -50,10 +50,13 @@ class merge_dataset:
     csv_file: str = "/data/scratch/acw753/processed_midi/train_test_split.csv"
 
 @dataclass
-class player_classification_dataset:
+class player_classification_dataset: #Pijama, individual_eval=False, seq_dur = 15, non_overlap_ratio = 0.125
     dataset: str = "player_classification_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    data_dir: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split"
-    csv_file: str = "/data/scratch/acw753/finetune/player_classification_processed_track_split/train_test_split.csv"
-    seq_len: int = 15
+    data_dir: str = "/data/scratch/acw753/finetune/Giant_Piano_MIDI_processed_top30_seqlen_4096"
+    csv_file: str = "/data/scratch/acw753/finetune/Giant_Piano_MIDI_processed_top30_seqlen_4096/train_test_split.csv"
+    seq_len: Optional[int] = 1000#fixed sequence length during training, if seq_len and seq_dur are both None, concat all events in midi 
+    seq_dur: Optional[str] = None #fixed sequence duration during training, if seq_len and seq_dur are both None, concat all events in midi 
+    non_overlap_ratio: float = 0.25 #allowed range (0, 1]
+    individual_eval: bool = True

@@ -71,9 +71,9 @@ def analyze_dataset_statistics(chunked_files, chunked_labels, split="Dataset", s
     print(f"Plots saved to directory: {save_dir}")
 
 
-def process_file_lazy(args):
+def process_file(args):
     """Helper function to process a single file lazily."""
-    label, filename, data_dir, seq_len, partition = args
+    label, filename, data_dir, seq_len, non_overlap_ratio, partition = args
     raw_tokens = np.load(os.path.join(data_dir, "processed", filename))
     
     chunked_files, chunked_labels = [], []
@@ -95,8 +95,7 @@ def process_file_lazy(args):
             chunked_labels.append(label)
             
             if partition == "train":  # Create overlap
-                # slow_new = int((fast + slow) / 2)
-                slow_new = int(slow + (fast - slow) / 8)
+                slow_new = int(slow + (fast - slow) * non_overlap_ratio)
                 if slow_new == slow:  # Ensure progress
                     print(f"breaking the loop to avoid infinite loop: {slow_new} slow old{slow}, len(raw_tokens): {len(raw_tokens)}")
                     slow+=1
@@ -112,7 +111,9 @@ class PlayerClassificationDataset(Dataset):
     def __init__(self, dataset_config, tokenizer, partition="train"):
         assert partition=="train" or partition=="test"
         self.data_dir = dataset_config.data_dir
-        self.seq_len = dataset_config.seq_len #max duration in seconds
+        self.seq_len = dataset_config.seq_len #seq duration in seconds
+        self.seq_dur = dataset_config.seq_dur
+        self.non_overlap_ratio = dataset_config.non_overlap_ratio
         split_data = pd.read_csv(dataset_config.csv_file)
         file_basenames = split_data['file_base_name'].values
         splits = split_data['split'].values     
@@ -120,122 +121,50 @@ class PlayerClassificationDataset(Dataset):
         self.file_basenames = [f for f, s in zip(file_basenames, splits) if s == partition]
         self.labels = [l for l, s in zip(labels, splits) if s == partition]
         self.partition = partition
-        """if partition == "train":
-            self.chunked_files, self.chunked_labels = self.get_chunked_files_labels()
+
+        # Check seq_dur and seq_len: both can be None, or one can have a value while the other is None, 
+        # but they cannot both have values at the same time.
+        if dataset_config.individual_eval and partition == "test":
+            print("Evaluate each file individually without chunking during evaluation.")
+            self.chunked_files, self.chunked_labels = [np.load(os.path.join(self.data_dir, "processed",filename))  for filename in self.file_basenames], self.labels
         else:
-            self.chunked_files, self.chunked_labels = [np.load(os.path.join(self.data_dir, "processed",filename))  for filename in self.file_basenames], self.labels"""
+            if self.seq_len and not self.seq_dur: #chunk file based on seq_len
+                print(f"Chunk file based on seq_len = {self.seq_len} events")
+                self.chunked_files, self.chunked_labels = self.get_chunked_files_labels_based_on_seq_len()
+            elif self.seq_dur and not self.seq_len: #chunk file based on seq_dur
+                print(f"chunk file based on seq_dur = {self.seq_dur} seconds")
+                self.chunked_files, self.chunked_labels = self.get_chunked_files_labels_based_on_dur_parallel()
+            elif not self.seq_dur and not self.seq_len: #concat all events in midi file
+                print("concat all events in midi file")
+                self.chunked_files, self.chunked_labels = [np.load(os.path.join(self.data_dir, "processed",filename))  for filename in self.file_basenames], self.labels
+            else:
+                raise ValueError("seq_len and seq_dur cannot be both not None")
         
-        self.chunked_files, self.chunked_labels = self.get_chunked_files_labels_based_on_dur_parallel() #self.get_chunked_files_labels_based_on_dur()
-        # analyze_dataset_statistics(self.chunked_files, self.chunked_labels, split=partition, save_dir="/data/home/acw753/musicllama/archive_logs")
-        # if partition == "train":
-        #     self.balance_data()
         analyze_dataset_statistics(self.chunked_files, self.chunked_labels, split=partition, save_dir="/data/home/acw753/musicllama/archive_logs")
 
         self.tokenizer = tokenizer
-    def balance_data(self, target_count=None):
-        """
-        Balance the dataset by adjusting the number of labels per class.
-        
-        Parameters:
-            target_count (int, optional): The desired number of samples per class. If None, it uses the minimum class count.
-        
-        Returns:
-            None: Modifies the dataset in place (self.chunked_files and self.chunked_labels).
-        """
-        # Count the number of labels in each class
-        label_distribution = Counter(self.chunked_labels)
-        print(f"Original label distribution: {label_distribution}")
-        
-        # Determine the target number of samples per class
-        if target_count is None:
-            target_count = int(np.median(list(label_distribution.values())))  # Use the median class size as the target
-        print(f"Target count per class: {target_count}")
-        
-        # Group files and labels by class
-        grouped_data = {label: [] for label in label_distribution.keys()}
-        for file, label in zip(self.chunked_files, self.chunked_labels):
-            grouped_data[label].append(file)
-        
-        # Resample the data
-        balanced_files = []
-        balanced_labels = []
-        for label, files in grouped_data.items():
-            if len(files) > target_count:
-                # Undersample if there are too many samples
-                sampled_files = random.sample(files, target_count)
-            else:
-                # Oversample if there are too few samples
-                sampled_files = files + random.choices(files, k=target_count - len(files))
-            
-            balanced_files.extend(sampled_files)
-            balanced_labels.extend([label] * target_count)
-        
-        # Update the dataset
-        self.chunked_files = balanced_files
-        self.chunked_labels = balanced_labels
-        
-        # Display the new label distribution
-        new_label_distribution = Counter(self.chunked_labels)
-        print(f"Balanced label distribution: {new_label_distribution}")    
-    
-    def get_chunked_files_labels(self):
+
+    def get_chunked_files_labels_based_on_seq_len(self):
         self.chunked_files, self.chunked_labels = [], []
         for label, filename in zip(self.labels, self.file_basenames):
             raw_tokens = np.load(os.path.join(self.data_dir, "processed",filename))    
             # Split the raw tokens into chunks of length self.seq_len
-            num_chunks = len(raw_tokens) // self.seq_len
-            for i in range(num_chunks):
-                chunk = raw_tokens[i * self.seq_len:(i + 1) * self.seq_len]
+            hop_length = int(self.seq_len * self.non_overlap_ratio)
+            # Process chunks with the defined hop_length
+            for start_idx in range(0, len(raw_tokens) - self.seq_len + 1, hop_length):
+                chunk = raw_tokens[start_idx:start_idx + self.seq_len]
                 self.chunked_files.append(chunk)
                 self.chunked_labels.append(label)
-            
+
             # Handle the remainder, if any
-            remainder = len(raw_tokens) % self.seq_len
-            if remainder > 0:
-                chunk = raw_tokens[-remainder:]
-                self.chunked_files.append(chunk)
+            remainder_start = len(raw_tokens) - (len(raw_tokens) % hop_length)
+            if remainder_start<len(raw_tokens):
+                remainder = raw_tokens[remainder_start:]
+
+                self.chunked_files.append(remainder)
                 self.chunked_labels.append(label)
         return self.chunked_files, self.chunked_labels
     
-    def get_chunked_files_labels_based_on_dur(self):
-        self.chunked_files, self.chunked_labels = [], []
-
-        for label, filename in zip(self.labels, self.file_basenames):
-            raw_tokens = np.load(os.path.join(self.data_dir, "processed", filename))
-            
-            slow = 0  # Slow counter for the starting index
-            fast = 0  # Fast counter for the ending index
-            current_duration = 0  # Track the duration of the current chunk
-
-            while fast < len(raw_tokens):
-                # Calculate the duration of the current token
-                onset_time_slow = raw_tokens[slow][0] / 100  # Convert to seconds
-                onset_time_fast = raw_tokens[fast][0] / 100  # Convert to seconds
-                current_duration = onset_time_fast - onset_time_slow
-                
-                if current_duration <= self.seq_len:
-                    # Increment the fast counter to include the next token
-                    fast += 1
-                else:
-                    # Append the tokens between slow and fast as a chunk
-                    self.chunked_files.append(raw_tokens[slow:fast])
-                    self.chunked_labels.append(label)
-                    
-                    if self.partition == "train": #this creates overlap 
-                        slow_new = int((fast + slow) / 2)
-                        if slow_new == slow:  # Ensure progress
-                            print(f"breaking the loop to avoid infinite loop")
-                            break
-                        else:
-                            slow = slow_new
-                        fast = slow
-                    elif self.partition == "test": #this doesnt creates overlap 
-                        slow = fast
-
-        return self.chunked_files, self.chunked_labels
-
-
-
     def get_chunked_files_labels_based_on_dur_parallel(self):
         import os
         import numpy as np
@@ -243,13 +172,13 @@ class PlayerClassificationDataset(Dataset):
     
         self.chunked_files, self.chunked_labels = [], []
         args = [
-            (label, filename, self.data_dir, self.seq_len, self.partition)
+            (label, filename, self.data_dir, self.seq_dur, self.non_overlap_ratio, self.partition)
             for label, filename in zip(self.labels, self.file_basenames)
         ]
         
         with Pool(cpu_count()) as pool:
             # Use `pool.imap` for lazy iteration
-            for chunked_files, chunked_labels in pool.imap(process_file_lazy, args):
+            for chunked_files, chunked_labels in pool.imap(process_file, args):
                 self.chunked_files.extend(chunked_files)
                 self.chunked_labels.extend(chunked_labels)
         
