@@ -2081,7 +2081,8 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
                 if number_of_labels ==0:
                     loss = torch.tensor(0., requires_grad=True).to(pooled_logits)
                 else:
-                    loss = loss/number_of_labels
+                    # loss = loss/number_of_labels
+                    loss = loss
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 loss = loss_fct(pooled_logits, labels)
