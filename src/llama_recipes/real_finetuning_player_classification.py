@@ -30,6 +30,7 @@ from llama_recipes.configs import fsdp_config as FSDP_CONFIG
 from llama_recipes.configs import ddp_config as DDP_CONFIG
 from llama_recipes.configs import train_config as TRAIN_CONFIG
 from llama_recipes.data.concatenator import ConcatDataset_vanilla as ConcatDataset
+from llama_recipes.data.concatenator import ConcatDataset_dummy_padding as ConcatDataset_dummy_padding
 from llama_recipes.policies import AnyPrecisionAdamW, apply_fsdp_checkpointing
 from llama_recipes.model_checkpointing import load_model_checkpoint_ddp
 
@@ -268,8 +269,7 @@ def main(**kwargs):
 
 
     if train_config.batching_strategy == "packing":
-        dataset_train = ConcatDataset(dataset_train, chunk_size=train_config.context_length)  #TODO: add Player classification concat 
-
+        dataset_train = ConcatDataset_dummy_padding(dataset_train, chunk_size=train_config.context_length)
     train_dl_kwargs = get_dataloader_kwargs(train_config, dataset_train, tokenizer, "train")
 
     # Create DataLoaders for the training and validation dataset
@@ -340,6 +340,7 @@ def main(**kwargs):
         local_rank if (train_config.enable_fsdp or train_config.enable_ddp) else None, #TODO: change this and train_utils
         rank if (train_config.enable_fsdp or train_config.enable_ddp) else None,#TODO: change this and train_utils
         wandb_run,
+        train_config.individual_eval
     )
     if not train_config.enable_fsdp or rank==0:
         [print(f'Key: {k}, Value: {v}') for k, v in results.items()]
