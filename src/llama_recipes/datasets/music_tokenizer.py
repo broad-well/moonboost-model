@@ -42,7 +42,6 @@ class MusicTokenizer():
         #define labels (language tokens)
         self.sos_timeshift, self.eos_timeshift = self.timeshift_vocab_size-2, self.timeshift_vocab_size-1 #TODO think whether this is correct
         self.sos_dur, self.eos_dur = self.dur_vocab_size-2, self.dur_vocab_size-1
-        # self.sos_dur, self.eos_dur = 1025, 1026 #TODO: very ugly fix!! #IF CONVERT TO LINEAR THEN HAVE TO CHANGE THIS BACK 
 
         self.sos_octave, self.eos_octave = self.octave_vocab_size-2, self.octave_vocab_size-1
         self.sos_pitch_class, self.eos_pitch_class = self.pitch_class_vocab_size-2, self.pitch_class_vocab_size-1
@@ -62,7 +61,6 @@ class MusicTokenizer():
         self.pitch_dict = {i: i+self.sos_out_vocab_size+self.timeshift_vocab_size+self.dur_vocab_size+self.octave_vocab_size for i in range(self.pitch_class_vocab_size)}
         self.instrument_dict= {i: i+self.sos_out_vocab_size+self.timeshift_vocab_size+self.dur_vocab_size+self.octave_vocab_size+self.pitch_class_vocab_size for i in range(self.instrument_vocab_size)}
         self.velocity_dict = {i: i+self.sos_out_vocab_size+self.timeshift_vocab_size+self.dur_vocab_size+self.octave_vocab_size+self.pitch_class_vocab_size + self.instrument_vocab_size for i in range(self.velocity_vocab_size)}
-        print(f"self.sos_out_dict:{self.sos_out_dict}, self.timeshift_dict:{self.timeshift_dict}, self.duration_dict:{self.duration_dict},self.octave_dict:{self.octave_dict}, self.pitch_dict:{self.pitch_dict}, self.instrument_dict:{self.instrument_dict} self.velocity_dict:{self.velocity_dict}")
         
         self.sos_out_dict_decode = {v: k for k, v in self.sos_out_dict.items()}
         self.timeshift_dict_decode = {v: k for k, v in self.timeshift_dict.items()}
@@ -72,7 +70,6 @@ class MusicTokenizer():
         self.instrument_dict_decode = {v: k for k, v in self.instrument_dict.items()}
         self.velocity_dict_decode = {v: k for k, v in self.velocity_dict.items()}
 
-        # print(f"self.onset_dict_decode:{self.onset_dict_decode}, self.duration_dict_decode:{self.duration_dict_decode},self.octave_dict_decode:{self.octave_dict_decode}, self.pitch_dict_decode:{self.pitch_dict_decode}, self.instrument_dict_decode:{self.instrument_dict_decode} self.velocity_dict_decode:{self.velocity_dict_decode}")
     def encode_single(self, raw_token):
         """
         each raw token looks like: [onset_binary_str, duration, [octave, pitch_class],instrument, velocity], ['00000001101100111101', 25, [4, 11], 24, 58] 
@@ -106,24 +103,11 @@ class MusicTokenizer():
             encoded_tokens = encoded_tokens[1:]
         if if_added_eos:
             encoded_tokens = encoded_tokens[:-1]
-        
-        #now the encoded tokens does not contain sos and eos
-        """
-        #1. Convert Onset to bits 
-        onsets_labels = self.decimal_to_binary_batch(encoded_tokens[:, 0], bits=self.onset_vocab_size) #(len, ) -> (len, onset_vocab_size)
-        other_labels = encoded_tokens[:, 1:] #(len, 5)"""
 
         #1. Convert onsets to delta onsets
-        # print(f"check encoded_tokens:{encoded_tokens[:5]}")
         timeshift_labels_raw =  torch.diff(encoded_tokens[:, 0], prepend=torch.tensor([0]))
-        # print(f"timeshift_labels_raw:{timeshift_labels_raw[:5]}")
-        #2. Concat the raw value
-        """
-        output = torch.concat([onsets_labels, other_labels], dim = -1) #(len, onset_vocab_size+5)"""
         output = torch.cat([torch.zeros(encoded_tokens.shape[0]).unsqueeze(-1) , timeshift_labels_raw.unsqueeze(-1), encoded_tokens[:, 1:]], dim = -1) #(len, 6) #TODO: check if this is correct, ensure there is no time shift < 0
-        # print(f"output:{output[:5]}")
 
-        """add sos_out token at the beginning"""
         #3. Add sos and eos label if necessary
         if if_added_sos: 
             output = torch.concat([torch.tensor(self.sos_label).unsqueeze(0), output], dim = 0) 
@@ -265,77 +249,6 @@ class MusicTokenizer():
         return out
     def add_new_tokens(self, token_name = "classification_token", token_val = -4):
         setattr(self, token_name, [token_val for _ in range(6)]) #example token
-    def create_dur_dictionary(self):
-        """Create a duration dictionary to map duration values to tokens in log scale."""
-        dur_vocab_size_wo_soseos = self.dur_vocab_size - 2
-        bin_width=10/dur_vocab_size_wo_soseos #assume duration ranges from 10ms to 10240ms 
-        # Generate bin boundaries
-        bin_boundaries = [2 ** (i * bin_width) for i in range(dur_vocab_size_wo_soseos + 1)]
-
-        # Create dictionary to map tokens to bins
-        token_to_bin = {}
-
-        for token in range(1, 1025):  # Tokens from 1 to 1024
-            # Determine which bin this token falls into
-            for bin_num in range(dur_vocab_size_wo_soseos):
-                if bin_boundaries[bin_num] <= token < bin_boundaries[bin_num + 1]:
-                    token_to_bin[token] = bin_num + self.timeshift_vocab_size + self.sos_out_vocab_size
-
-                    break
-
-        # Handle the last token
-        # token_to_bin[1024] = dur_vocab_size_wo_soseos - 1 
-        token_to_bin[1024] = dur_vocab_size_wo_soseos - 1 + self.timeshift_vocab_size + self.sos_out_vocab_size
-
-        #Add SOS and EOS dur 
-        # print(f"sos_dur:{self.sos_dur + self.timeshift_vocab_size}, eos_dur:{self.eos_dur + self.timeshift_vocab_size}")
-        token_to_bin[self.sos_dur] = self.dur_vocab_size - 2 + self.timeshift_vocab_size + self.sos_out_vocab_size #VERY UGLY FIX
-        token_to_bin[self.eos_dur] = self.dur_vocab_size - 1 + self.timeshift_vocab_size + self.sos_out_vocab_size
-
-        return token_to_bin
-
-    @staticmethod
-    def binary_to_decimal_batch(binary):
-        """
-        Converts a batch of binary representations to their decimal equivalents.
-
-        Args:
-            binary (torch.Tensor): A tensor containing binary numbers with each binary number in a row.
-
-        Returns:
-            torch.Tensor: A tensor containing the decimal equivalents of the input binary numbers.
-        """
-        # Create a mask to apply the binary weights
-        bits = binary.size(-1) #2 bits are reserved for sos and eos TODO: add exception handling script, e.g., no eos and sos token is added, return dtype?
-        mask = 2 ** torch.arange(bits - 1, -1, -1).to(binary.device)
-
-        # Apply the mask and sum up the results to get the decimal numbers
-        dec = (binary[..., :] * mask).sum(dim=-1, keepdim=True)
-
-        return dec
-    
-    @staticmethod
-    def decimal_to_binary_batch(dec, bits):
-        """
-        Converts a batch of decimal numbers to their binary representations.
-
-        Args:
-            dec (torch.Tensor): A tensor containing decimal numbers.
-            bits (int, optional): The desired number of bits in the binary representation. Default is 4.
-
-        Returns:
-            torch.Tensor: A tensor containing the binary representations of the input decimal numbers.
-        """
-        # Convert the input tensor to a long tensor for bitwise operations
-        dec = dec.long()
-
-        # Create a mask to extract the binary digits
-        mask = 2 ** torch.arange(bits - 1, -1, -1).to(dec.device)
-
-        # Apply the mask to extract the binary digits
-        binary = (dec.unsqueeze(-1) & mask).bool().to(torch.int8)
-
-        return binary
 
     @staticmethod
     def midi_to_compound(midifile,TIME_RESOLUTION=100, debug=False, calibate_to_default_tempo = False):
@@ -436,7 +349,6 @@ class MusicTokenizer():
 
     @staticmethod
     def compound_to_midi(tokens, TIME_RESOLUTION = 100, debug=False):
-        #TODO: double check and add doc string
         """
         tokens: npy array with shape (len, 6)
         """
