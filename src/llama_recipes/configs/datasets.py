@@ -38,25 +38,25 @@ class lakhmidi_dataset:
     dataset: str = "lakhmidi_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    data_dir: str = "/data/scratch/acw753/lakhmidi_processed"
-    csv_file: str = "/data/scratch/acw753/lakhmidi_processed/train_test_split.csv"
+    data_dir: str = "/PATH/TO/DATADIR"
+    csv_file: str = "/PATH/TO/CSV"
 
 @dataclass
 class merge_dataset:
     dataset: str = "merge_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    data_dir: str = "/data/scratch/acw753/processed_midi"
-    csv_file: str = "/data/scratch/acw753/processed_midi/train_test_split.csv"
+    data_dir: str = "/PATH/TO/DATADIR"
+    csv_file: str = "/PATH/TO/CSV"
 
 @dataclass
 class player_classification_dataset: #Pijama, individual_eval=False, seq_dur = 15, non_overlap_ratio = 0.125
     dataset: str = "player_classification_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    data_dir: str = "/data/scratch/acw753/finetune/Giant_Piano_MIDI_processed_top30_seqlen_4096"
-    csv_file: str = "/data/scratch/acw753/finetune/Giant_Piano_MIDI_processed_top30_seqlen_4096/train_test_split.csv"
-    seq_len: Optional[int] = 1000#fixed sequence length during training, if seq_len and seq_dur are both None, concat all events in midi 
+    data_dir: str = "/PATH/TO/DATADIR"
+    csv_file: str = "/PATH/TO/CSV"
+    seq_len: Optional[int] = 1200#fixed sequence length during training, if seq_len and seq_dur are both None, concat all events in midi 
     seq_dur: Optional[str] = None #fixed sequence duration during training, if seq_len and seq_dur are both None, concat all events in midi 
     non_overlap_ratio: float = 0.25 #allowed range (0, 1]
-    individual_eval: bool = True
+    individual_eval: bool = True #if set True, piece-wise evaluation, otherwise, clip-wise evaluation
