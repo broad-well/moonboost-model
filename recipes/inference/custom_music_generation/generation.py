@@ -296,7 +296,7 @@ class MusicLlama:
         metadata_condition: List = None, 
         chord_condition: List = None,
         condition_token_lengths: List[int] = None,
-        chord_dict_path: str = None,
+        chord_dict: str = None,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on provided prompts using the language generation model.
@@ -317,8 +317,6 @@ class MusicLlama:
             If logprobs is True, token log probabilities are computed for each generated token.
 
         """
-        with open(chord_dict_path, "r") as f:
-            chord_dict = json.load(f)
         bsz = len(prompt_tokens)
         if metadata_condition is not None:
             metadata_tokens = torch.tensor(metadata_condition)
@@ -496,7 +494,7 @@ class MusicLlama:
         logprobs: bool = False,
         condition_token_lengths: List[int] = None,
         chord_token_indices: List[List[int]] = None,
-        chord_dict_path: str = None,
+        chord_dict: str = None,
         if_return_chords: bool = True
     ):
         """
@@ -537,7 +535,7 @@ class MusicLlama:
             logprobs=logprobs,
             echo = True,
             condition_token_lengths = condition_token_lengths,
-            chord_dict_path = chord_dict_path
+            chord_dict = chord_dict
         )
         if chord_token_indices is not None:
             chord_tokens = [prompt_tokens[i][chord_token_indices[i][0]+1:chord_token_indices[i][1]] for i in range(len(prompt_tokens))]
