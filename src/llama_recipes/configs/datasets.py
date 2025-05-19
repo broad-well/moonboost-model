@@ -14,8 +14,8 @@ class samsum_dataset:
 @dataclass
 class grammar_dataset:
     dataset: str = "grammar_dataset"
-    train_split: str = "src/llama_recipes/datasets/grammar_dataset/gtrain_10k.csv" 
-    test_split: str = "src/llama_recipes/datasets/grammar_dataset/grammar_validation.csv"
+    train_split: str = "/PATH/TO/CSV" 
+    test_split: str = "/PATH/TO/CSV"
 
     
 @dataclass
@@ -23,7 +23,7 @@ class alpaca_dataset:
     dataset: str = "alpaca_dataset"
     train_split: str = "train"
     test_split: str = "val"
-    data_path: str = "src/llama_recipes/datasets/alpaca_data.json"
+    data_path: str = "/PATH/TO/DATADIR"
     
     
 @dataclass
@@ -39,7 +39,7 @@ class lakhmidi_dataset:
     train_split: str = "train"
     test_split: str = "test"
     data_dir: str = "/PATH/TO/DATADIR"
-    csv_file: str = "/data/scratch/acw753/lakhmidi_processed/train_test_split.csv"
+    csv_file: str = "/PATH/TO/CSV"
 
 @dataclass
 class merge_dataset:
@@ -65,4 +65,6 @@ class commu_con_gen_dataset:
     data_dir: str = "/PATH/TO/DATADIR"
     csv_file: str = "/PATH/TO/CSV"
     additional_token_dict_path: str = "/PATH/TO/JSON"
+    if_add_chords_in_transformer: bool=True
+    if_add_metadata_in_transformer: bool=True
     
