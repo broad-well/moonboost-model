@@ -70,7 +70,6 @@ def main(
     max_gen_len: Optional[int] = None,
     finetuned_PEFT_weight_path: Optional[str] = None,
     additional_token_dict_path: Optional[str] = None,
-    chord_dict_path: Optional[str] = None
 ):
     """
     Examples to run with the models finetuned for chat. Prompts correspond of chat
@@ -94,6 +93,9 @@ def main(
 
     with open(additional_token_dict_path, "r") as f:
         additional_token_dict = json.load(f)
+    
+    with open(model_config_path, "r") as f:
+        chord_dict = json.load(f)['chord_dict']
 
     save_folder = os.path.join(finetuned_PEFT_weight_path, os.path.basename(ckpt_dir), f"temperature_{temperature}_top_p_{top_p}")
     os.makedirs(save_folder, exist_ok=True)
@@ -149,7 +151,7 @@ def main(
                 top_p=top_p,
                 condition_token_lengths = condition_token_lengths, #remove sos token and emotion token
                 chord_token_indices = chord_token_indices,
-                chord_dict_path = chord_dict_path, 
+                chord_dict = chord_dict, 
                 if_return_chords = False
             )
             #save midi
@@ -258,7 +260,7 @@ def main(
             top_p=top_p,
             condition_token_lengths=condition_token_lengths,
             chord_token_indices=chord_token_indices,
-            chord_dict_path=chord_dict_path, 
+            chord_dict=chord_dict, 
             if_return_chords=False
         )
 
