@@ -984,11 +984,9 @@ def eval_player_classification_accuracy(model,train_config, dataset_val, local_r
     eval_ppl = torch.exp(eval_epoch_loss)
 
     accuracy = correct/total
-    print(f"total: {total}, len:{len(dataset_val)}")
     from sklearn.metrics import f1_score
     f1 = f1_score(all_labels, all_predictions, average='macro')
     print(f"Accuracy: {accuracy} f1:{f1}")
-    print(f"all_labels:{all_labels}, all_predictions:{all_predictions}")
     # Print evaluation metrics
     if train_config.enable_fsdp:
         if local_rank==0:
