@@ -293,7 +293,6 @@ def main(**kwargs):
             pin_memory=True,
             **val_dl_kwargs,
         )
-        print("check eval loader length", len(eval_dataloader), len(dataset_val))
 
     # Initialize the optimizer and learning rate scheduler
     if fsdp_config.pure_bf16 and fsdp_config.optimizer == "anyprecision":
