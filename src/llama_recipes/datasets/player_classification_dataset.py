@@ -17,59 +17,6 @@ import matplotlib.pyplot as plt
 from collections import Counter
 import os
 import random
-def analyze_dataset_statistics(chunked_files, chunked_labels, split="Dataset", save_dir="plots"):
-    """
-    Analyze statistics of chunked_files and chunked_labels and save plots to local directory.
-    
-    Parameters:
-        chunked_files (list of lists): Nested list where each sublist represents a file chunk (e.g., frames or samples).
-        chunked_labels (list): List of labels corresponding to chunked files.
-        split (str): Name of the dataset (e.g., "Train", "Test") for display purposes.
-        save_dir (str): Directory where plots will be saved.
-    
-    Returns:
-        None
-    """
-    # Create the directory if it does not exist
-    os.makedirs(save_dir, exist_ok=True)
-    
-    # Analyze chunked_files length distribution
-    file_lengths = [len(chunk) for chunk in chunked_files]
-    
-    # Analyze chunked_labels class distribution
-    label_distribution = Counter(chunked_labels)
-    
-    # Display statistics
-    print(f"--- {split} Statistics ---")
-    print(f"Number of files: {len(chunked_files)}")
-    print(f"File length (min, max, mean, std): {min(file_lengths)}, {max(file_lengths)}, {np.mean(file_lengths):.2f}, {np.std(file_lengths):.2f}")
-    print(f"Label distribution: {label_distribution}")
-    
-    # Visualize file lengths distribution
-    plt.figure(figsize=(12, 6))
-    plt.hist(file_lengths, bins=30, alpha=0.75, color='blue', edgecolor='black')
-    plt.title(f"{split}: Chunked File Length Distribution")
-    plt.xlabel("Length")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-    file_length_plot_path = os.path.join(save_dir, f"{split}_file_length_distribution.png")
-    plt.savefig(file_length_plot_path, format='png', dpi=300)
-    plt.close()  # Close the figure to free up memory
-    
-    # Visualize label distribution
-    labels, counts = zip(*label_distribution.items())
-    plt.figure(figsize=(12, 6))
-    plt.bar(labels, counts, color='orange', edgecolor='black', alpha=0.75)
-    plt.title(f"{split}: Chunked Label Distribution")
-    plt.xlabel("Labels")
-    plt.ylabel("Counts")
-    plt.grid(axis='y')
-    label_dist_plot_path = os.path.join(save_dir, f"{split}_label_distribution.png")
-    plt.savefig(label_dist_plot_path, format='png', dpi=300)
-    plt.close()  # Close the figure to free up memory
-    
-    print(f"Plots saved to directory: {save_dir}")
-
 
 def process_file(args):
     """Helper function to process a single file lazily."""
@@ -140,8 +87,6 @@ class PlayerClassificationDataset(Dataset):
             else:
                 raise ValueError("seq_len and seq_dur cannot be both not None")
         
-        analyze_dataset_statistics(self.chunked_files, self.chunked_labels, split=partition, save_dir="/data/home/acw753/musicllama/archive_logs")
-
         self.tokenizer = tokenizer
 
     def get_chunked_files_labels_based_on_seq_len(self):
