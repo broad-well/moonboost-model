@@ -64,14 +64,22 @@ def find_midi_files_from_file(dataset_name, split_file, dataset_folder):
     assert len(midi_files) == len(splits)
     return midi_files, splits
 
-def process_midi_file_safe_v2(midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold = None):
+def process_midi_file_safe_v2(midi_file, config, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold = None):
     """
     input: midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold
 
     output: a list of processed chunked dictionaries [{file: file_path, split: split, onsets: onset_counter, durations: duration_counter, length: length}, ...] or None
     """
     try:
-        out = process_midi_file_v2(midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold)
+        onset_vocab_size = config.get("onset_vocab_size", None) #value - 2 = max value of timeshift
+        dur_vocab_size = config.get("dur_vocab_size", None) #value - 2 = max value of duration
+        octave_vocab_size = config.get("octave_vocab_size", None)
+        pitch_class_vocab_size = config.get("pitch_class_vocab_size", None)
+        instrument_vocab_size = config.get("instrument_vocab_size", None)
+        velocity_vocab_size = config.get("velocity_vocab_size", None)
+        assert onset_vocab_size and dur_vocab_size
+        tokenizer = MusicTokenizer(timeshift_vocab_size = onset_vocab_size, dur_vocab_size = dur_vocab_size, octave_vocab_size = octave_vocab_size, pitch_class_vocab_size = pitch_class_vocab_size, instrument_vocab_size = instrument_vocab_size, velocity_vocab_size = velocity_vocab_size)  
+        out = process_midi_file_v2(tokenizer, midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold)
         if out is not None:
             for out_chunk in out:
                 if out_chunk is not None:
@@ -124,10 +132,11 @@ def filter_large_ts_dur(compounds, output_file_path, split, onset_vocab_size, du
             'length_duration': compounds[-1][0]+compounds[-1][1],
         }
 
-def process_midi_file_v2(midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold = None):
+def process_midi_file_v2(tokenizer, midi_file, split, onset_vocab_size, dur_vocab_size, output_folder, log_file, silence_threshold = None):
+
     #convert midi to compounds
     compounds = tokenizer.midi_to_compound(midi_file)
-    output_file_name = midi_file.replace("/", "_").replace(".midi", ".npy").replace(".mid", ".npy") #TODO: this will avoid duplicates
+    output_file_name = midi_file.replace("\\", "_").replace(".midi", ".npy").replace(".mid", ".npy") #TODO: this will avoid duplicates
     output_file_path = os.path.join(output_folder, output_file_name)
     if silence_threshold: #split compounds if timeshift exceeds threshold
         list_of_compounds = chunk_compounds(compounds, threshold=silence_threshold)
@@ -135,7 +144,7 @@ def process_midi_file_v2(midi_file, split, onset_vocab_size, dur_vocab_size, out
             return [filter_large_ts_dur(compounds, output_file_path, split, onset_vocab_size, dur_vocab_size, log_file)]
         else:
             list_of_output_file_path = [os.path.join(output_folder, 
-                                                     midi_file.split("/")[-1].replace('.midi', f'_{i}.npy').replace('.mid', f'_{i}.npy')) 
+                                                     midi_file.split("\\")[-1].replace('.midi', f'_{i}.npy').replace('.mid', f'_{i}.npy')) 
                                                      for i in range(len(list_of_compounds))]
             return [filter_large_ts_dur(compounds, output_file_path, split, onset_vocab_size, dur_vocab_size, log_file) for (compounds, output_file_path) in zip(list_of_compounds, list_of_output_file_path)]
     else: 
@@ -207,11 +216,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #get file paths
-    midi_output_folder = args.output_folder+"/processed"
-    log_file = args.output_folder + "/failed_midi_files.log"
-    csv_file_path = args.output_folder+"/train_test_split.csv"
-    train_stats_file = args.output_folder+"/train_tokens_stats.json"
-    test_stats_file = args.output_folder+"/test_tokens_stats.json"
+    midi_output_folder = args.output_folder+"\\processed"
+    log_file = args.output_folder + "\\failed_midi_files.log"
+    csv_file_path = args.output_folder+"\\train_test_split.csv"
+    train_stats_file = args.output_folder+"\\train_tokens_stats.json"
+    test_stats_file = args.output_folder+"\\test_tokens_stats.json"
     os.makedirs(midi_output_folder, exist_ok=True)
     
     if args.train_ratio==1:
@@ -246,8 +255,8 @@ if __name__ == '__main__':
         instrument_vocab_size = data.get("instrument_vocab_size", None)
         velocity_vocab_size = data.get("velocity_vocab_size", None)
         assert onset_vocab_size and dur_vocab_size
+    config = data
     print(f"processing using {num_cores} cpus. tokenizer config: max timeshift allowed: {onset_vocab_size-3}, max duration allowed: {dur_vocab_size-3}")
-    tokenizer = MusicTokenizer(timeshift_vocab_size = onset_vocab_size, dur_vocab_size = dur_vocab_size, octave_vocab_size = octave_vocab_size, pitch_class_vocab_size = pitch_class_vocab_size, instrument_vocab_size = instrument_vocab_size, velocity_vocab_size = velocity_vocab_size)  
 
     # Open the CSV file for writing directly
     with open(csv_file_path, 'w', newline='') as csvfile:
@@ -257,7 +266,7 @@ if __name__ == '__main__':
         # Process all MIDI files
         with ProcessPoolExecutor(max_workers=num_cores) as executor:
             for result in tqdm(
-                executor.map(process_midi_file_safe_v2, midi_files, splits, [onset_vocab_size] * len(midi_files), [dur_vocab_size] * len(midi_files), [midi_output_folder] * len(midi_files), [log_file] * len(midi_files), [args.ts_threshold] * len(midi_files)),
+                executor.map(process_midi_file_safe_v2, midi_files, [config] * len(midi_files), splits, [onset_vocab_size] * len(midi_files), [dur_vocab_size] * len(midi_files), [midi_output_folder] * len(midi_files), [log_file] * len(midi_files), [args.ts_threshold] * len(midi_files)),
                 total=len(midi_files),
                 desc="Processing MIDI files"
             ):
