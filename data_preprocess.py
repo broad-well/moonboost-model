@@ -136,7 +136,7 @@ def process_midi_file_v2(tokenizer, midi_file, split, onset_vocab_size, dur_voca
 
     #convert midi to compounds
     compounds = tokenizer.midi_to_compound(midi_file)
-    output_file_name = midi_file.replace("\\", "_").replace(".midi", ".npy").replace(".mid", ".npy") #TODO: this will avoid duplicates
+    output_file_name = midi_file.replace(os.path.sep, "_").replace(".midi", ".npy").replace(".mid", ".npy") #TODO: this will avoid duplicates
     output_file_path = os.path.join(output_folder, output_file_name)
     if silence_threshold: #split compounds if timeshift exceeds threshold
         list_of_compounds = chunk_compounds(compounds, threshold=silence_threshold)
@@ -144,7 +144,7 @@ def process_midi_file_v2(tokenizer, midi_file, split, onset_vocab_size, dur_voca
             return [filter_large_ts_dur(compounds, output_file_path, split, onset_vocab_size, dur_vocab_size, log_file)]
         else:
             list_of_output_file_path = [os.path.join(output_folder, 
-                                                     midi_file.split("\\")[-1].replace('.midi', f'_{i}.npy').replace('.mid', f'_{i}.npy')) 
+                                                     midi_file.split(os.path.sep)[-1].replace('.midi', f'_{i}.npy').replace('.mid', f'_{i}.npy')) 
                                                      for i in range(len(list_of_compounds))]
             return [filter_large_ts_dur(compounds, output_file_path, split, onset_vocab_size, dur_vocab_size, log_file) for (compounds, output_file_path) in zip(list_of_compounds, list_of_output_file_path)]
     else: 
@@ -216,11 +216,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #get file paths
-    midi_output_folder = args.output_folder+"\\processed"
-    log_file = args.output_folder + "\\failed_midi_files.log"
-    csv_file_path = args.output_folder+"\\train_test_split.csv"
-    train_stats_file = args.output_folder+"\\train_tokens_stats.json"
-    test_stats_file = args.output_folder+"\\test_tokens_stats.json"
+    midi_output_folder = args.output_folder+ os.path.sep + "processed"
+    log_file = args.output_folder +  os.path.sep + "failed_midi_files.log"
+    csv_file_path = args.output_folder+ os.path.sep + "train_test_split.csv"
+    train_stats_file = args.output_folder+ os.path.sep + "train_tokens_stats.json"
+    test_stats_file = args.output_folder+ os.path.sep + "test_tokens_stats.json"
     os.makedirs(midi_output_folder, exist_ok=True)
     
     if args.train_ratio==1:

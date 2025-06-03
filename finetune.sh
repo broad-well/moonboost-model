@@ -1,0 +1,23 @@
+mkdir -p checkpoints/uncon3
+python3 recipes/finetuning/real_finetuning_uncon_gen.py \
+  --lr 6e-4 \
+  --val_batch_size 4 \
+  --run_validation True \
+  --validation_interval 500 \
+  --save_metrics True \
+  --dist_checkpoint_root_folder checkpoints/uncon3 \
+  --dist_checkpoint_folder ddp \
+  --trained_checkpoint_path moonbeam_309M.pt \
+  --pure_bf16 True \
+  --enable_ddp False \
+  --use_peft True \
+  --peft_method lora \
+  --quantization False \
+  --model_name uncon \
+  --dataset lakhmidi_dataset \
+  --output_dir checkpoints/uncon3 \
+  --batch_size_training 2 \
+  --context_length 2048 \
+  --num_epochs 10 \
+  --use_wandb False \
+  --gamma 0.95

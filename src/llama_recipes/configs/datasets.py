@@ -38,8 +38,8 @@ class lakhmidi_dataset:
     dataset: str = "lakhmidi_dataset"
     train_split: str = "train"
     test_split: str = "test"
-    data_dir: str = "moonboost\\dataset"
-    csv_file: str = "moonboost\\dataset\\train_test_split.csv"
+    data_dir: str = "../moonboost/dataset"
+    csv_file: str = "../moonboost/dataset/train_test_split.csv"
 
 @dataclass
 class merge_dataset:

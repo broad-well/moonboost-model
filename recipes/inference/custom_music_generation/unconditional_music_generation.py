@@ -64,7 +64,7 @@ def main(
     os.makedirs(save_folder, exist_ok=True)
 
     for i, (dialog, result) in enumerate(zip(prompts, results)):
-        epoch_step = re.search(r'(\d+-\d+)\.pt$', ckpt_dir).group(1)
+        epoch_step = '6-0'
         save_path = f'{save_folder}/{epoch_step}_{str(i)}.mid'
         result['generation']['content'].save(save_path)
         result['generation']['prompt'].save(save_path.replace(".mid", "_prompt.mid"))
