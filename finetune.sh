@@ -16,7 +16,7 @@ python3 recipes/finetuning/real_finetuning_uncon_gen.py \
   --model_name uncon \
   --dataset lakhmidi_dataset \
   --output_dir checkpoints/uncon3 \
-  --batch_size_training 2 \
+  --batch_size_training 4 \
   --context_length 2048 \
   --num_epochs 10 \
   --use_wandb False \

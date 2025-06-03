@@ -1,3 +1,4 @@
+import glob
 from typing import List, Optional
 
 import fire
@@ -23,16 +24,8 @@ def main(
     num_test_data: int = 50,
     max_gen_len: Optional[int] = None,
     finetuned_PEFT_weight_path: Optional[str] = None,
+    custom_prompts: Optional[str] = None,
 ):
-
-    # Set the random seed for CPU and GPU
-    seed = 42
-    import torch
-    torch.manual_seed(seed)
-    random.seed(seed)  # You can choose any seed value, 42 is commonly used
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.    
 
     generator = MusicLlama.build(
         ckpt_dir=ckpt_dir,
@@ -48,11 +41,17 @@ def main(
     test_files_sampled = random.sample(test_filenames, num_test_data)
     prompts = []
 
-    for filename in test_files_sampled:
-        test_data = np.load(os.path.join(os.path.dirname(csv_file), 'processed', filename))
-        test_data_with_sos = generator.tokenizer.encode_series(test_data, if_add_sos = True, if_add_eos = False)
-        prompts.append(test_data_with_sos[:prompt_len])
-    
+    if not custom_prompts:
+        for filename in test_files_sampled:
+            test_data = np.load(os.path.join(os.path.dirname(csv_file), 'processed', filename))
+            test_data_with_sos = generator.tokenizer.encode_series(test_data, if_add_sos = True, if_add_eos = False)
+            prompts.append(test_data_with_sos[:prompt_len])
+    else:
+        for path in glob.glob(custom_prompts):
+            test_data = np.load(path)
+            test_data_with_sos = generator.tokenizer.encode_series(test_data, if_add_sos = True, if_add_eos = False)
+            prompts.append(test_data_with_sos[:prompt_len])
+
     results = generator.music_completion(
         prompts,
         max_gen_len=max_gen_len,
